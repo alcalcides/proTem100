@@ -112,7 +112,7 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
-		HAL_GPIO_TogglePin(GPIOD, LD3_Pin);
+		HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
 
 
 	}
