@@ -1,0 +1,31 @@
+#build outputs
+Debug/
+Release/
+STM32CubeIDE/Debug/
+STM32CubeIDE/Release/
+build/
+out/
+
+# Temporary backup
+STM32CubeIDE_bkp/
+
+# Compiled files
+*.o
+*.obj
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.d
+*.cyclo
+*.su
+
+# IDE temporary files
+.metadata/
+.settings/language.settings.xml
+
+# OS files
+.DS_Store
+Thumbs.db
+
