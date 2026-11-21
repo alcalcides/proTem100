@@ -101,7 +101,8 @@ int main(void) {
 	MX_SPI1_Init();
 	MX_USB_HOST_Init();
 	/* USER CODE BEGIN 2 */
-	HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
+	GPIO_PinState buttonState;
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -112,8 +113,13 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
-		HAL_GPIO_TogglePin(GPIOD, LD3_Pin);
-		HAL_Delay(500);
+		buttonState = HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
+
+		if(buttonState == GPIO_PIN_SET){
+			HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+			HAL_Delay(500);
+		}
+
 
 	}
 	/* USER CODE END 3 */
