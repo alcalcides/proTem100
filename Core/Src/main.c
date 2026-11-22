@@ -106,7 +106,7 @@ int main(void)
   MX_USB_HOST_Init();
   MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
-	HAL_GPIO_WritePin(GPIOD, LD3_Pin, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
 	HAL_TIM_Base_Start_IT(&htim7);
 	GPIO_PinState buttonState;
   /* USER CODE END 2 */
