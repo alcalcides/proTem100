@@ -172,7 +172,8 @@ int main(void) {
 		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_400hz_flash, AUDIO_400HZ_LEN);
 		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_800hz_flash, AUDIO_800HZ_LEN);
 		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_1600hz_flash, AUDIO_1600HZ_LEN);
-		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_6000hz_flash, AUDIO_6000HZ_LEN);
+		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_6000hz_flash,
+				AUDIO_6000HZ_LEN);
 	} else {
 		/* LED4 (verde) aceso = falha de comunicação I2C com o CS43L22 */
 		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
@@ -382,7 +383,8 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : CS_I2C_SPI_Pin */
 	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -400,7 +402,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin : B1_Pin */
 	GPIO_InitStruct.Pin = B1_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
