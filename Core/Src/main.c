@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "audio_signals.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +43,7 @@
 I2C_HandleTypeDef hi2c1;
 
 I2S_HandleTypeDef hi2s3;
+DMA_HandleTypeDef hdma_spi3_tx;
 
 TIM_HandleTypeDef htim7;
 
@@ -53,17 +54,12 @@ TIM_HandleTypeDef htim7;
 #define CS43L22_I2C_ADDR_1  (0x4AU << 1)
 #define CS43L22_I2C_ADDR_2  (0x4BU << 1)
 
-/* Vetor curto de senoide (16 bits, estéreo L/R) armazenado na Flash */
-static const uint16_t audio_sine_flash[] = { 0x0000, 0x0000, 0x2320, 0x2320,
-		0x4120, 0x4120, 0x5640, 0x5640, 0x6000, 0x6000, 0x5640, 0x5640, 0x4120,
-		0x4120, 0x2320, 0x2320, 0x0000, 0x0000, 0xDCE0, 0xDCE0, 0xBEE0, 0xBEE0,
-		0xA9C0, 0xA9C0, 0xA000, 0xA000, 0xA9C0, 0xA9C0, 0xBEE0, 0xBEE0, 0xDCE0,
-		0xDCE0 };
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_TIM7_Init(void);
@@ -99,7 +95,7 @@ static uint16_t CS43L22_DetectAndInit(void) {
 	}
 
 	/* 3. Sequência de inicialização do CS43L22 (Power Ctl 1 em 0x01 + ajustes obrigatórios) */
-	CS43L22_WriteReg(addr, 0x02, 0x01); /* Power Ctl 1: mantém em power-down durante config */
+	CS43L22_WriteReg(addr, 0x02, 0x01); /* Power Ctl 1: mantém em power-down durante config - É DEFAULT*/
 
 	/* Ajustes exigidos pela sequência de inicialização do datasheet */
 	CS43L22_WriteReg(addr, 0x00, 0x99);
@@ -155,6 +151,7 @@ int main(void) {
 
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
+	MX_DMA_Init();
 	MX_I2C1_Init();
 	MX_I2S3_Init();
 	MX_TIM7_Init();
@@ -162,11 +159,20 @@ int main(void) {
 	HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET);
 	HAL_TIM_Base_Start_IT(&htim7);
 	GPIO_PinState buttonState;
-	uint16_t codec_addr = CS43L22_DetectAndInit();
 
+	uint16_t codec_addr = CS43L22_DetectAndInit();
 	if (codec_addr != 0) {
 		/* LED3 (laranja) aceso = CS43L22 respondeu no I2C1 */
 		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+
+		/* Tamanho em número de amostras/half-words (uint16_t), não em bytes */
+
+		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_100hz_flash, AUDIO_100HZ_LEN);
+		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_200hz_flash, AUDIO_200HZ_LEN);
+		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_400hz_flash, AUDIO_400HZ_LEN);
+		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_800hz_flash, AUDIO_800HZ_LEN);
+		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_1600hz_flash, AUDIO_1600HZ_LEN);
+		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_6000hz_flash, AUDIO_6000HZ_LEN);
 	} else {
 		/* LED4 (verde) aceso = falha de comunicação I2C com o CS43L22 */
 		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
@@ -184,12 +190,9 @@ int main(void) {
 
 		if (buttonState == GPIO_PIN_SET) {
 			HAL_GPIO_TogglePin(LD5_GPIO_Port, LD5_Pin);
-			HAL_Delay(1000);
+			HAL_Delay(100);
 		}
-		if (codec_addr != 0) {
-			HAL_I2S_Transmit(&hi2s3, (uint16_t*) audio_sine_flash,
-					sizeof(audio_sine_flash) / sizeof(audio_sine_flash[0]), 50);
-		}
+
 	}
 	/* USER CODE END 3 */
 }
@@ -337,6 +340,21 @@ static void MX_TIM7_Init(void) {
 }
 
 /**
+ * Enable DMA controller clock
+ */
+static void MX_DMA_Init(void) {
+
+	/* DMA controller clock enable */
+	__HAL_RCC_DMA1_CLK_ENABLE();
+
+	/* DMA interrupt init */
+	/* DMA1_Stream5_IRQn interrupt configuration */
+	HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
+
+}
+
+/**
  * @brief GPIO Initialization Function
  * @param None
  * @retval None
@@ -364,8 +382,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
-			GPIO_PIN_RESET);
+	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : CS_I2C_SPI_Pin */
 	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
