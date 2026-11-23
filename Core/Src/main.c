@@ -54,6 +54,22 @@ TIM_HandleTypeDef htim7;
 #define CS43L22_I2C_ADDR_1  (0x4AU << 1)
 #define CS43L22_I2C_ADDR_2  (0x4BU << 1)
 
+#define AUDIO_RAM_MAX_LEN  AUDIO_100HZ_LEN
+
+static uint16_t audio_ram_buf[AUDIO_RAM_MAX_LEN];
+//static const uint16_t *active_flash_signal = audio_tone_100hz_flash;
+//static uint16_t active_flash_len = AUDIO_100HZ_LEN;
+//static const uint16_t *active_flash_signal = audio_tone_200hz_flash;
+//static uint16_t active_flash_len = AUDIO_200HZ_LEN;
+//static const uint16_t *active_flash_signal = audio_tone_400hz_flash;
+//static uint16_t active_flash_len = AUDIO_400HZ_LEN;
+//static const uint16_t *active_flash_signal = audio_tone_800hz_flash;
+//static uint16_t active_flash_len = AUDIO_800HZ_LEN;
+//static const uint16_t *active_flash_signal = audio_tone_1600hz_flash;
+//static uint16_t active_flash_len = AUDIO_1600HZ_LEN;
+static const uint16_t *active_flash_signal = audio_tone_6000hz_flash;
+static uint16_t active_flash_len = AUDIO_6000HZ_LEN;
+static uint8_t filter_enabled = 0U;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -121,6 +137,45 @@ static uint16_t CS43L22_DetectAndInit(void) {
 
 	return addr;
 }
+
+static void Audio_CopyToRam(const uint16_t *in_stereo, uint16_t *out_stereo,
+		uint16_t len_halfwords) {
+	for (uint16_t i = 0; i < len_halfwords; i++) {
+		out_stereo[i] = in_stereo[i];
+	}
+}
+
+static void Audio_LowPassFilter_400Hz(const uint16_t *in_stereo,
+		uint16_t *out_stereo, uint16_t len_halfwords) {
+	/* fs = 96000 Hz, fc = 400 Hz -> alpha = (2*pi*fc) / (fs + 2*pi*fc) */
+	const float alpha = 0.0255106f;
+	float y_prev_l = 0.0f;
+	float y_prev_r = 0.0f;
+
+	for (uint16_t i = 0; i + 1 < len_halfwords; i += 2) {
+		float x_l = (float) ((int16_t) in_stereo[i]);
+		float x_r = (float) ((int16_t) in_stereo[i + 1]);
+
+		y_prev_l = y_prev_l + alpha * (x_l - y_prev_l);
+		y_prev_r = y_prev_r + alpha * (x_r - y_prev_r);
+
+		out_stereo[i] = (uint16_t) ((int16_t) y_prev_l);
+		out_stereo[i + 1] = (uint16_t) ((int16_t) y_prev_r);
+	}
+}
+
+static void Audio_ApplyOutputBuffer(uint8_t use_filter) {
+	if (use_filter != 0U) {
+		Audio_LowPassFilter_400Hz(active_flash_signal, audio_ram_buf,
+				active_flash_len);
+	} else {
+		Audio_CopyToRam(active_flash_signal, audio_ram_buf, active_flash_len);
+	}
+
+	HAL_I2S_DMAStop(&hi2s3);
+	HAL_I2S_Transmit_DMA(&hi2s3, audio_ram_buf, active_flash_len);
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -167,13 +222,16 @@ int main(void) {
 
 		/* Tamanho em número de amostras/half-words (uint16_t), não em bytes */
 
-		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_100hz_flash, AUDIO_100HZ_LEN);
-		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_200hz_flash, AUDIO_200HZ_LEN);
-		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_400hz_flash, AUDIO_400HZ_LEN);
-		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_800hz_flash, AUDIO_800HZ_LEN);
-		//HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_1600hz_flash, AUDIO_1600HZ_LEN);
+//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_100hz_flash, AUDIO_100HZ_LEN);
+//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_200hz_flash, AUDIO_200HZ_LEN);
+//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_400hz_flash, AUDIO_400HZ_LEN);
+//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_800hz_flash, AUDIO_800HZ_LEN);
+//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_1600hz_flash, AUDIO_1600HZ_LEN);
 		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_6000hz_flash,
 				AUDIO_6000HZ_LEN);
+		filter_enabled = 0U;
+		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
+		Audio_ApplyOutputBuffer(filter_enabled);
 	} else {
 		/* LED4 (verde) aceso = falha de comunicação I2C com o CS43L22 */
 		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
@@ -187,12 +245,25 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
-		buttonState = HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
+		static GPIO_PinState last_btn_state = GPIO_PIN_RESET;
+		static uint32_t last_debounce_ms = 0U;
 
-		if (buttonState == GPIO_PIN_SET) {
-			HAL_GPIO_TogglePin(LD5_GPIO_Port, LD5_Pin);
-			HAL_Delay(100);
+		GPIO_PinState current_btn_state = HAL_GPIO_ReadPin(B1_GPIO_Port,
+		B1_Pin);
+
+		if ((current_btn_state == GPIO_PIN_SET)
+				&& (last_btn_state == GPIO_PIN_RESET)) {
+			if ((HAL_GetTick() - last_debounce_ms) > 150U) {
+				last_debounce_ms = HAL_GetTick();
+				filter_enabled = (filter_enabled == 0U) ? 1U : 0U;
+
+				HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin,
+						(filter_enabled != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+
+				Audio_ApplyOutputBuffer(filter_enabled);
+			}
 		}
+		last_btn_state = current_btn_state;
 
 	}
 	/* USER CODE END 3 */
@@ -383,8 +454,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
-			GPIO_PIN_RESET);
+	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : CS_I2C_SPI_Pin */
 	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
