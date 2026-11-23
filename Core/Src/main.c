@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "usb_host.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -45,12 +44,21 @@ I2C_HandleTypeDef hi2c1;
 
 I2S_HandleTypeDef hi2s3;
 
-SPI_HandleTypeDef hspi1;
-
 TIM_HandleTypeDef htim7;
 
 /* USER CODE BEGIN PV */
+/* Endereço de 7 bits do CS43L22: 6 bits superiores fixos '100101' + pino AD0 (0 ou 1).
+ * Na HAL do STM32, deslocamos 1 bit à esquerda (addr << 1).
+ * Se AD0 = 0 -> 7-bit 0x4A -> HAL 0x94. Se AD0 = 1 -> 7-bit 0x4B -> HAL 0x96. */
+#define CS43L22_I2C_ADDR_1  (0x4AU << 1)
+#define CS43L22_I2C_ADDR_2  (0x4BU << 1)
 
+/* Vetor curto de senoide (16 bits, estéreo L/R) armazenado na Flash */
+static const uint16_t audio_sine_flash[] = { 0x0000, 0x0000, 0x2320, 0x2320,
+		0x4120, 0x4120, 0x5640, 0x5640, 0x6000, 0x6000, 0x5640, 0x5640, 0x4120,
+		0x4120, 0x2320, 0x2320, 0x0000, 0x0000, 0xDCE0, 0xDCE0, 0xBEE0, 0xBEE0,
+		0xA9C0, 0xA9C0, 0xA000, 0xA000, 0xA9C0, 0xA9C0, 0xBEE0, 0xBEE0, 0xDCE0,
+		0xDCE0 };
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -58,17 +66,65 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
-static void MX_SPI1_Init(void);
 static void MX_TIM7_Init(void);
-void MX_USB_HOST_Process(void);
-
 /* USER CODE BEGIN PFP */
-
+static uint16_t CS43L22_DetectAndInit(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static HAL_StatusTypeDef CS43L22_WriteReg(uint16_t devAddr, uint8_t reg,
+		uint8_t val) {
+	return HAL_I2C_Mem_Write(&hi2c1, devAddr, reg, I2C_MEMADD_SIZE_8BIT, &val,
+			1, 100);
+}
 
+static uint16_t CS43L22_DetectAndInit(void) {
+	uint16_t addr = 0;
+
+	/* 1. Mantém RESET baixo e libera para nível alto (amostra AD0 na subida) */
+	HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_RESET);
+	HAL_Delay(5);
+	HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_SET);
+	HAL_Delay(5);
+
+	/* 2. Testa resposta I2C nos dois endereços possíveis (AD0=0 ou AD0=1) */
+	if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_1, 3, 100) == HAL_OK) {
+		addr = CS43L22_I2C_ADDR_1;
+	} else if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_2, 3, 100)
+			== HAL_OK) {
+		addr = CS43L22_I2C_ADDR_2;
+	} else {
+		return 0; /* Codec não respondeu no I2C1 */
+	}
+
+	/* 3. Sequência de inicialização do CS43L22 (Power Ctl 1 em 0x01 + ajustes obrigatórios) */
+	CS43L22_WriteReg(addr, 0x02, 0x01); /* Power Ctl 1: mantém em power-down durante config */
+
+	/* Ajustes exigidos pela sequência de inicialização do datasheet */
+	CS43L22_WriteReg(addr, 0x00, 0x99);
+	CS43L22_WriteReg(addr, 0x47, 0x80);
+	CS43L22_WriteReg(addr, 0x32, 0x80); /* bit 7 = 1 */
+	CS43L22_WriteReg(addr, 0x32, 0x00); /* bit 7 = 0 */
+	CS43L22_WriteReg(addr, 0x00, 0x00);
+
+	/* Interface serial (I2S Philips 16-bit), clocking, saída de fone e volumes */
+	CS43L22_WriteReg(addr, 0x06, 0x07); /* Interface Ctl 1: slave, I2S 16-bit */
+	CS43L22_WriteReg(addr, 0x05, 0x80); /* Clocking Ctl: AUTO enabled */
+	CS43L22_WriteReg(addr, 0x04, 0xAF); /* Power Ctl 2: habilita canais de saída */
+	CS43L22_WriteReg(addr, 0x1A, 0x0A); /* PCM A volume */
+	CS43L22_WriteReg(addr, 0x1B, 0x0A); /* PCM B volume */
+//	CS43L22_WriteReg(addr, 0x20, 0x00); /* Master A volume */
+//	CS43L22_WriteReg(addr, 0x21, 0x00); /* Master B volume */
+	CS43L22_WriteReg(addr, 0x20, 0xD0); /* Master A volume */
+	CS43L22_WriteReg(addr, 0x21, 0xD0); /* Master B volume */
+
+	/* 4. Liga o codec (Power Ctl 1 = 0x9E após MCLK estar ativo) */
+	CS43L22_WriteReg(addr, 0x02, 0x9E);
+	HAL_Delay(5);
+
+	return addr;
+}
 /* USER CODE END 0 */
 
 /**
@@ -102,20 +158,26 @@ int main(void)
   MX_GPIO_Init();
   MX_I2C1_Init();
   MX_I2S3_Init();
-  MX_SPI1_Init();
-  MX_USB_HOST_Init();
   MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
 	HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
 	HAL_TIM_Base_Start_IT(&htim7);
 	GPIO_PinState buttonState;
+	uint16_t codec_addr = CS43L22_DetectAndInit();
+
+	if (codec_addr != 0) {
+		/* LED3 (laranja) aceso = CS43L22 respondeu no I2C1 */
+		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
+	} else {
+		/* LED4 (verde) aceso = falha de comunicação I2C com o CS43L22 */
+		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
+	}
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 	while (1) {
     /* USER CODE END WHILE */
-    MX_USB_HOST_Process();
 
     /* USER CODE BEGIN 3 */
 
@@ -123,10 +185,12 @@ int main(void)
 
 		if(buttonState == GPIO_PIN_SET){
 			HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-			HAL_Delay(500);
+			HAL_Delay(1000);
 		}
-
-
+		if (codec_addr != 0) {
+			HAL_I2S_Transmit(&hi2s3, (uint16_t*) audio_sine_flash,
+					sizeof(audio_sine_flash) / sizeof(audio_sine_flash[0]), 50);
+		}
 	}
   /* USER CODE END 3 */
 }
@@ -245,44 +309,6 @@ static void MX_I2S3_Init(void)
 }
 
 /**
-  * @brief SPI1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_SPI1_Init(void)
-{
-
-  /* USER CODE BEGIN SPI1_Init 0 */
-
-  /* USER CODE END SPI1_Init 0 */
-
-  /* USER CODE BEGIN SPI1_Init 1 */
-
-  /* USER CODE END SPI1_Init 1 */
-  /* SPI1 parameter configuration*/
-  hspi1.Instance = SPI1;
-  hspi1.Init.Mode = SPI_MODE_MASTER;
-  hspi1.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi1.Init.DataSize = SPI_DATASIZE_8BIT;
-  hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
-  hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
-  hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
-  hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
-  hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
-  hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-  hspi1.Init.CRCPolynomial = 10;
-  if (HAL_SPI_Init(&hspi1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN SPI1_Init 2 */
-
-  /* USER CODE END SPI1_Init 2 */
-
-}
-
-/**
   * @brief TIM7 Initialization Function
   * @param None
   * @retval None
@@ -378,6 +404,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : SPI1_SCK_Pin SPI1_MISO_Pin SPI1_MOSI_Pin */
+  GPIO_InitStruct.Pin = SPI1_SCK_Pin|SPI1_MISO_Pin|SPI1_MOSI_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /*Configure GPIO pin : BOOT1_Pin */
   GPIO_InitStruct.Pin = BOOT1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -400,6 +434,20 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : VBUS_FS_Pin */
+  GPIO_InitStruct.Pin = VBUS_FS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(VBUS_FS_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : OTG_FS_ID_Pin OTG_FS_DM_Pin OTG_FS_DP_Pin */
+  GPIO_InitStruct.Pin = OTG_FS_ID_Pin|OTG_FS_DM_Pin|OTG_FS_DP_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Alternate = GPIO_AF10_OTG_FS;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : OTG_FS_OverCurrent_Pin */
   GPIO_InitStruct.Pin = OTG_FS_OverCurrent_Pin;
