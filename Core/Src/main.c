@@ -213,7 +213,6 @@ int main(void) {
 	/* USER CODE BEGIN 2 */
 	HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET);
 	HAL_TIM_Base_Start_IT(&htim7);
-	GPIO_PinState buttonState;
 
 	uint16_t codec_addr = CS43L22_DetectAndInit();
 	if (codec_addr != 0) {
@@ -227,8 +226,7 @@ int main(void) {
 //		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_400hz_flash, AUDIO_400HZ_LEN);
 //		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_800hz_flash, AUDIO_800HZ_LEN);
 //		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_1600hz_flash, AUDIO_1600HZ_LEN);
-		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_6000hz_flash,
-				AUDIO_6000HZ_LEN);
+		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_6000hz_flash, AUDIO_6000HZ_LEN);
 		filter_enabled = 0U;
 		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
 		Audio_ApplyOutputBuffer(filter_enabled);

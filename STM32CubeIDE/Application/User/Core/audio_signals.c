@@ -7,9 +7,6 @@
 
 #include "audio_signals.h"
 
-/* Amplitude de pico (~0x6000) para evitar saturação no fone */
-#define TONE_AMP_16B  (24576.0f)
-
 /* 100 Hz @ 96 kHz -> 960 amostras/ciclo -> 1920 half-words (L/R) */
 const uint16_t audio_tone_100hz_flash[1920] = { 0x0000, 0x0000, 0x0283, 0x0283,
 		0x0506, 0x0506, 0x0788, 0x0788, 0x0A0A, 0x0A0A, 0x0C8B, 0x0C8B, 0x0F0B,
