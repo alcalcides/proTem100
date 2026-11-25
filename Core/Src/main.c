@@ -81,14 +81,13 @@ static void MX_I2S3_Init(void);
 static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 static uint16_t CS43L22_DetectAndInit(void);
+static uint16_t CS43L22_DetectAddress(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static HAL_StatusTypeDef CS43L22_WriteReg(uint16_t devAddr, uint8_t reg,
-		uint8_t val) {
-	return HAL_I2C_Mem_Write(&hi2c1, devAddr, reg, I2C_MEMADD_SIZE_8BIT, &val,
-			1, 100);
+static HAL_StatusTypeDef CS43L22_WriteReg(uint16_t devAddr, uint8_t reg, uint8_t val) {
+	return HAL_I2C_Mem_Write(&hi2c1, devAddr, reg, I2C_MEMADD_SIZE_8BIT, &val, 1, 100);
 }
 
 static uint16_t CS43L22_DetectAndInit(void) {
@@ -101,14 +100,7 @@ static uint16_t CS43L22_DetectAndInit(void) {
 	HAL_Delay(5);
 
 	/* 2. Testa resposta I2C nos dois endereços possíveis (AD0=0 ou AD0=1) */
-	if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_1, 3, 100) == HAL_OK) {
-		addr = CS43L22_I2C_ADDR_1;
-	} else if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_2, 3, 100)
-			== HAL_OK) {
-		addr = CS43L22_I2C_ADDR_2;
-	} else {
-		return 0; /* Codec não respondeu no I2C1 */
-	}
+	addr = CS43L22_DetectAddress();
 
 	/* 3. Sequência de inicialização do CS43L22 (Power Ctl 1 em 0x01 + ajustes obrigatórios) */
 	CS43L22_WriteReg(addr, 0x02, 0x01); /* Power Ctl 1: mantém em power-down durante config - É DEFAULT*/
@@ -136,6 +128,16 @@ static uint16_t CS43L22_DetectAndInit(void) {
 	HAL_Delay(5);
 
 	return addr;
+}
+
+static uint16_t CS43L22_DetectAddress(void) {
+	if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_1, 3, 100) == HAL_OK) {
+		return CS43L22_I2C_ADDR_1;
+	} else if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_2, 3, 100) == HAL_OK) {
+		return CS43L22_I2C_ADDR_2;
+	} else {
+		return 0; /* Codec não respondeu no I2C1 */
+	}
 }
 
 static void Audio_CopyToRam(const uint16_t *in_stereo, uint16_t *out_stereo,
