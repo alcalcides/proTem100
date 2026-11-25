@@ -81,6 +81,7 @@ static void MX_I2S3_Init(void);
 static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 static uint16_t CS43L22_DetectAndInit(void);
+static void CS43L22_Initialize(void);
 static uint16_t CS43L22_DetectAddress(void);
 /* USER CODE END PFP */
 
@@ -93,13 +94,8 @@ static HAL_StatusTypeDef CS43L22_WriteReg(uint16_t devAddr, uint8_t reg, uint8_t
 static uint16_t CS43L22_DetectAndInit(void) {
 	uint16_t addr = 0;
 
-	/* 1. Mantém RESET baixo e libera para nível alto (amostra AD0 na subida) */
-	HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_RESET);
-	HAL_Delay(5);
-	HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_SET);
-	HAL_Delay(5);
+	CS43L22_Initialize();
 
-	/* 2. Testa resposta I2C nos dois endereços possíveis (AD0=0 ou AD0=1) */
 	addr = CS43L22_DetectAddress();
 
 	/* 3. Sequência de inicialização do CS43L22 (Power Ctl 1 em 0x01 + ajustes obrigatórios) */
@@ -130,6 +126,19 @@ static uint16_t CS43L22_DetectAndInit(void) {
 	return addr;
 }
 
+/**
+ * Mantém RESET baixo e libera para nível alto (amostra AD0 na subida)
+ */
+static void CS43L22_Initialize(void) {
+	HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_RESET);
+	HAL_Delay(5);
+	HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_SET);
+	HAL_Delay(5);
+}
+
+/**
+ * Testa resposta I2C nos dois endereços possíveis (AD0=0 ou AD0=1)
+ */
 static uint16_t CS43L22_DetectAddress(void) {
 	if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_1, 3, 100) == HAL_OK) {
 		return CS43L22_I2C_ADDR_1;
