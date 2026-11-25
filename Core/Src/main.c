@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "audio_signals.h"
+#include "CS43L22.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,12 +49,6 @@ DMA_HandleTypeDef hdma_spi3_tx;
 TIM_HandleTypeDef htim7;
 
 /* USER CODE BEGIN PV */
-/* Endereço de 7 bits do CS43L22: 6 bits superiores fixos '100101' + pino AD0 (0 ou 1).
- * Na HAL do STM32, deslocamos 1 bit à esquerda (addr << 1).
- * Se AD0 = 0 -> 7-bit 0x4A -> HAL 0x94. Se AD0 = 1 -> 7-bit 0x4B -> HAL 0x96. */
-#define CS43L22_I2C_ADDR_1  (0x4AU << 1)
-#define CS43L22_I2C_ADDR_2  (0x4BU << 1)
-
 #define AUDIO_RAM_MAX_LEN  AUDIO_100HZ_LEN
 
 static uint16_t audio_ram_buf[AUDIO_RAM_MAX_LEN];
@@ -80,103 +75,11 @@ static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
-static HAL_StatusTypeDef CS43L22_WriteReg(uint16_t devAddr, uint8_t reg, uint8_t val);
-static uint16_t CS43L22_DetectAndInit(void);
-static void CS43L22_Initialize(void);
-static uint16_t CS43L22_DetectAddress(void);
-static void CS43L22_PowerDown(uint16_t devAddr);
-static void CS43L22_InitialSetUp(uint16_t devAddr);
-static void CS43L22_SetUpOutput(uint16_t devAddr);
-static void CS43L22_PowerUp(uint16_t devAddr);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-static HAL_StatusTypeDef CS43L22_WriteReg(uint16_t devAddr, uint8_t reg, uint8_t val) {
-	return HAL_I2C_Mem_Write(&hi2c1, devAddr, reg, I2C_MEMADD_SIZE_8BIT, &val, 1, 100);
-}
-
-static uint16_t CS43L22_DetectAndInit(void) {
-	uint16_t addr = 0;
-
-	CS43L22_Initialize();
-
-	addr = CS43L22_DetectAddress();
-
-	CS43L22_PowerDown(addr);
-	CS43L22_InitialSetUp(addr);
-	CS43L22_SetUpOutput(addr);
-	CS43L22_PowerUp(addr);
-	HAL_Delay(5);
-
-	return addr;
-}
-
-/**
- * Mantém RESET baixo e libera para nível alto (amostra AD0 na subida)
- */
-static void CS43L22_Initialize(void) {
-	HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_RESET);
-	HAL_Delay(5);
-	HAL_GPIO_WritePin(Audio_RST_GPIO_Port, Audio_RST_Pin, GPIO_PIN_SET);
-	HAL_Delay(5);
-}
-
-/**
- * Testa resposta I2C nos dois endereços possíveis (AD0=0 ou AD0=1)
- */
-static uint16_t CS43L22_DetectAddress(void) {
-	if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_1, 3, 100) == HAL_OK) {
-		return CS43L22_I2C_ADDR_1;
-	} else if (HAL_I2C_IsDeviceReady(&hi2c1, CS43L22_I2C_ADDR_2, 3, 100) == HAL_OK) {
-		return CS43L22_I2C_ADDR_2;
-	} else {
-		return 0; /* Codec não respondeu no I2C1 */
-	}
-}
-
-/**
- * Sequência de inicialização do CS43L22
- * Passo 1: desligar o codec
- * Power Ctl 1 em 0x01 + ajustes obrigatórios
- */
-static void CS43L22_PowerDown(uint16_t devAddr) {
-	CS43L22_WriteReg(devAddr, 0x02, 0x01);
-}
-
-/**
- * Ajustes exigidos pela sequência de inicialização do datasheet
- */
-static void CS43L22_InitialSetUp(uint16_t devAddr) {
-	CS43L22_WriteReg(devAddr, 0x00, 0x99);
-	CS43L22_WriteReg(devAddr, 0x47, 0x80);
-	CS43L22_WriteReg(devAddr, 0x32, 0x80); /* bit 7 = 1 */
-	CS43L22_WriteReg(devAddr, 0x32, 0x00); /* bit 7 = 0 */
-	CS43L22_WriteReg(devAddr, 0x00, 0x00);
-}
-
-/**
- * Interface serial (I2S Philips 16-bit), clocking, saída de fone e volumes
- */
-static void CS43L22_SetUpOutput(uint16_t devAddr) {
-	CS43L22_WriteReg(devAddr, 0x06, 0x07); /* Interface Ctl 1: slave, I2S 16-bit */
-	CS43L22_WriteReg(devAddr, 0x05, 0x80); /* Clocking Ctl: AUTO enabled */
-	CS43L22_WriteReg(devAddr, 0x04, 0xAF); /* Power Ctl 2: habilita canais de saída */
-	CS43L22_WriteReg(devAddr, 0x1A, 0x0A); /* PCM A volume */
-	CS43L22_WriteReg(devAddr, 0x1B, 0x0A); /* PCM B volume */
-//	CS43L22_WriteReg(devAddr, 0x20, 0x00); /* Master A volume */
-//	CS43L22_WriteReg(devAddr, 0x21, 0x00); /* Master B volume */
-	CS43L22_WriteReg(devAddr, 0x20, 0xD0); /* Master A volume */
-	CS43L22_WriteReg(devAddr, 0x21, 0xD0); /* Master B volume */
-
-}
-
-/**
- * Liga o codec (só pode após MCLK estar ativo)
- */
-static void CS43L22_PowerUp(uint16_t devAddr) {
-	CS43L22_WriteReg(devAddr, 0x02, 0x9E);
-}
 
 static void Audio_CopyToRam(const uint16_t *in_stereo, uint16_t *out_stereo,
 		uint16_t len_halfwords) {
