@@ -80,9 +80,14 @@ static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
+static HAL_StatusTypeDef CS43L22_WriteReg(uint16_t devAddr, uint8_t reg, uint8_t val);
 static uint16_t CS43L22_DetectAndInit(void);
 static void CS43L22_Initialize(void);
 static uint16_t CS43L22_DetectAddress(void);
+static void CS43L22_PowerDown(uint16_t devAddr);
+static void CS43L22_InitialSetUp(uint16_t devAddr);
+static void CS43L22_SetUpOutput(uint16_t devAddr);
+static void CS43L22_PowerUp(uint16_t devAddr);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -98,29 +103,10 @@ static uint16_t CS43L22_DetectAndInit(void) {
 
 	addr = CS43L22_DetectAddress();
 
-	/* 3. Sequência de inicialização do CS43L22 (Power Ctl 1 em 0x01 + ajustes obrigatórios) */
-	CS43L22_WriteReg(addr, 0x02, 0x01); /* Power Ctl 1: mantém em power-down durante config - É DEFAULT*/
-
-	/* Ajustes exigidos pela sequência de inicialização do datasheet */
-	CS43L22_WriteReg(addr, 0x00, 0x99);
-	CS43L22_WriteReg(addr, 0x47, 0x80);
-	CS43L22_WriteReg(addr, 0x32, 0x80); /* bit 7 = 1 */
-	CS43L22_WriteReg(addr, 0x32, 0x00); /* bit 7 = 0 */
-	CS43L22_WriteReg(addr, 0x00, 0x00);
-
-	/* Interface serial (I2S Philips 16-bit), clocking, saída de fone e volumes */
-	CS43L22_WriteReg(addr, 0x06, 0x07); /* Interface Ctl 1: slave, I2S 16-bit */
-	CS43L22_WriteReg(addr, 0x05, 0x80); /* Clocking Ctl: AUTO enabled */
-	CS43L22_WriteReg(addr, 0x04, 0xAF); /* Power Ctl 2: habilita canais de saída */
-	CS43L22_WriteReg(addr, 0x1A, 0x0A); /* PCM A volume */
-	CS43L22_WriteReg(addr, 0x1B, 0x0A); /* PCM B volume */
-//	CS43L22_WriteReg(addr, 0x20, 0x00); /* Master A volume */
-//	CS43L22_WriteReg(addr, 0x21, 0x00); /* Master B volume */
-	CS43L22_WriteReg(addr, 0x20, 0xD0); /* Master A volume */
-	CS43L22_WriteReg(addr, 0x21, 0xD0); /* Master B volume */
-
-	/* 4. Liga o codec (Power Ctl 1 = 0x9E após MCLK estar ativo) */
-	CS43L22_WriteReg(addr, 0x02, 0x9E);
+	CS43L22_PowerDown(addr);
+	CS43L22_InitialSetUp(addr);
+	CS43L22_SetUpOutput(addr);
+	CS43L22_PowerUp(addr);
 	HAL_Delay(5);
 
 	return addr;
@@ -147,6 +133,49 @@ static uint16_t CS43L22_DetectAddress(void) {
 	} else {
 		return 0; /* Codec não respondeu no I2C1 */
 	}
+}
+
+/**
+ * Sequência de inicialização do CS43L22
+ * Passo 1: desligar o codec
+ * Power Ctl 1 em 0x01 + ajustes obrigatórios
+ */
+static void CS43L22_PowerDown(uint16_t devAddr) {
+	CS43L22_WriteReg(devAddr, 0x02, 0x01);
+}
+
+/**
+ * Ajustes exigidos pela sequência de inicialização do datasheet
+ */
+static void CS43L22_InitialSetUp(uint16_t devAddr) {
+	CS43L22_WriteReg(devAddr, 0x00, 0x99);
+	CS43L22_WriteReg(devAddr, 0x47, 0x80);
+	CS43L22_WriteReg(devAddr, 0x32, 0x80); /* bit 7 = 1 */
+	CS43L22_WriteReg(devAddr, 0x32, 0x00); /* bit 7 = 0 */
+	CS43L22_WriteReg(devAddr, 0x00, 0x00);
+}
+
+/**
+ * Interface serial (I2S Philips 16-bit), clocking, saída de fone e volumes
+ */
+static void CS43L22_SetUpOutput(uint16_t devAddr) {
+	CS43L22_WriteReg(devAddr, 0x06, 0x07); /* Interface Ctl 1: slave, I2S 16-bit */
+	CS43L22_WriteReg(devAddr, 0x05, 0x80); /* Clocking Ctl: AUTO enabled */
+	CS43L22_WriteReg(devAddr, 0x04, 0xAF); /* Power Ctl 2: habilita canais de saída */
+	CS43L22_WriteReg(devAddr, 0x1A, 0x0A); /* PCM A volume */
+	CS43L22_WriteReg(devAddr, 0x1B, 0x0A); /* PCM B volume */
+//	CS43L22_WriteReg(devAddr, 0x20, 0x00); /* Master A volume */
+//	CS43L22_WriteReg(devAddr, 0x21, 0x00); /* Master B volume */
+	CS43L22_WriteReg(devAddr, 0x20, 0xD0); /* Master A volume */
+	CS43L22_WriteReg(devAddr, 0x21, 0xD0); /* Master B volume */
+
+}
+
+/**
+ * Liga o codec (só pode após MCLK estar ativo)
+ */
+static void CS43L22_PowerUp(uint16_t devAddr) {
+	CS43L22_WriteReg(devAddr, 0x02, 0x9E);
 }
 
 static void Audio_CopyToRam(const uint16_t *in_stereo, uint16_t *out_stereo,
