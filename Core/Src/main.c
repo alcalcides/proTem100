@@ -42,7 +42,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
-
 I2S_HandleTypeDef hi2s3;
 DMA_HandleTypeDef hdma_spi3_tx;
 
@@ -50,9 +49,9 @@ TIM_HandleTypeDef htim7;
 
 /* USER CODE BEGIN PV */
 #define AUDIO_RAM_MAX_LEN  AUDIO_100HZ_LEN
-#define PLAYLIST_INDEX 0
+#define PLAYLIST_INDEX 5
 
-char ERROR_CODE;
+int16_t ERROR_CODE;
 static uint16_t audio_ram_buf[AUDIO_RAM_MAX_LEN];
 static uint8_t filter_enabled = 0U;
 /* USER CODE END PV */
@@ -71,7 +70,7 @@ static void MX_TIM7_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-void userErrorHandler(char code) {
+void userErrorHandler(int16_t code) {
 	ERROR_CODE = code;
 	HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
 	Error_Handler();
@@ -155,7 +154,7 @@ int main(void) {
 
 	uint8_t playListIndex = PLAYLIST_INDEX;
 	if(playListIndex >= PLAYLIST_COUNT) {
-		userErrorHandler('1');
+		userErrorHandler(1);
 	}
 
 	uint16_t *pDigitalAudioData = (uint16_t *) playList[playListIndex].data;
@@ -168,7 +167,7 @@ int main(void) {
 		filter_enabled = 0U;
 		Audio_ApplyOutputBuffer(filter_enabled, pDigitalAudioData, audioSize);
 	} else {
-		userErrorHandler('2');
+		userErrorHandler(2);
 	}
 	/* USER CODE END 2 */
 
