@@ -52,18 +52,6 @@ TIM_HandleTypeDef htim7;
 #define AUDIO_RAM_MAX_LEN  AUDIO_100HZ_LEN
 
 static uint16_t audio_ram_buf[AUDIO_RAM_MAX_LEN];
-//static const uint16_t *active_flash_signal = audio_tone_100hz_flash;
-//static uint16_t active_flash_len = AUDIO_100HZ_LEN;
-//static const uint16_t *active_flash_signal = audio_tone_200hz_flash;
-//static uint16_t active_flash_len = AUDIO_200HZ_LEN;
-//static const uint16_t *active_flash_signal = audio_tone_400hz_flash;
-//static uint16_t active_flash_len = AUDIO_400HZ_LEN;
-//static const uint16_t *active_flash_signal = audio_tone_800hz_flash;
-//static uint16_t active_flash_len = AUDIO_800HZ_LEN;
-//static const uint16_t *active_flash_signal = audio_tone_1600hz_flash;
-//static uint16_t active_flash_len = AUDIO_1600HZ_LEN;
-static const uint16_t *active_flash_signal = audio_tone_6000hz_flash;
-static uint16_t active_flash_len = AUDIO_6000HZ_LEN;
 static uint8_t filter_enabled = 0U;
 /* USER CODE END PV */
 
@@ -107,7 +95,7 @@ static void Audio_LowPassFilter_400Hz(const uint16_t *in_stereo,
 	}
 }
 
-static void Audio_ApplyOutputBuffer(uint8_t use_filter) {
+static void Audio_ApplyOutputBuffer(uint8_t use_filter, uint16_t *active_flash_signal, uint16_t active_flash_len) {
 	if (use_filter != 0U) {
 		Audio_LowPassFilter_400Hz(active_flash_signal, audio_ram_buf,
 				active_flash_len);
@@ -157,6 +145,13 @@ int main(void) {
 	HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET);
 	HAL_TIM_Base_Start_IT(&htim7);
 
+	uint8_t playListItem = 4;
+	if(playListItem >= PLAYLIST_COUNT) {
+		Error_Handler();
+	}
+
+	uint16_t *pDigitalAudioData = (uint16_t *) playList[playListItem].data;
+	uint16_t audioSize = playList[playListItem].lengh;
 	uint16_t codec_addr = CS43L22_DetectAndInit();
 	if (codec_addr != 0) {
 		/* LED3 (laranja) aceso = CS43L22 respondeu no I2C1 */
@@ -164,15 +159,10 @@ int main(void) {
 
 		/* Tamanho em número de amostras/half-words (uint16_t), não em bytes */
 
-//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_100hz_flash, AUDIO_100HZ_LEN);
-//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_200hz_flash, AUDIO_200HZ_LEN);
-//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_400hz_flash, AUDIO_400HZ_LEN);
-//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_800hz_flash, AUDIO_800HZ_LEN);
-//		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_1600hz_flash, AUDIO_1600HZ_LEN);
-		HAL_I2S_Transmit_DMA(&hi2s3, (uint16_t*) audio_tone_6000hz_flash, AUDIO_6000HZ_LEN);
+		HAL_I2S_Transmit_DMA(&hi2s3, pDigitalAudioData, audioSize);
 		filter_enabled = 0U;
 		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
-		Audio_ApplyOutputBuffer(filter_enabled);
+		Audio_ApplyOutputBuffer(filter_enabled, pDigitalAudioData, audioSize);
 	} else {
 		/* LED4 (verde) aceso = falha de comunicação I2C com o CS43L22 */
 		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
@@ -201,7 +191,7 @@ int main(void) {
 				HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin,
 						(filter_enabled != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 
-				Audio_ApplyOutputBuffer(filter_enabled);
+				Audio_ApplyOutputBuffer(filter_enabled, pDigitalAudioData, audioSize);
 			}
 		}
 		last_btn_state = current_btn_state;

@@ -28,4 +28,13 @@ extern const uint16_t audio_tone_800hz_flash[AUDIO_800HZ_LEN];
 extern const uint16_t audio_tone_1600hz_flash[AUDIO_1600HZ_LEN];
 extern const uint16_t audio_tone_6000hz_flash[AUDIO_6000HZ_LEN];
 
+typedef struct {
+	const char *id;
+	const uint16_t *data;
+	uint16_t lengh;
+} audioTrack_t;
+
+extern const audioTrack_t playList[];
+extern const uint8_t PLAYLIST_COUNT;
+
 #endif /* APPLICATION_USER_CORE_AUDIO_SIGNALS_H_ */
