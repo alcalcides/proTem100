@@ -50,7 +50,9 @@ TIM_HandleTypeDef htim7;
 
 /* USER CODE BEGIN PV */
 #define AUDIO_RAM_MAX_LEN  AUDIO_100HZ_LEN
+#define PLAYLIST_INDEX 0
 
+char ERROR_CODE;
 static uint16_t audio_ram_buf[AUDIO_RAM_MAX_LEN];
 static uint8_t filter_enabled = 0U;
 /* USER CODE END PV */
@@ -68,6 +70,11 @@ static void MX_TIM7_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void userErrorHandler(char code) {
+	ERROR_CODE = code;
+	Error_Handler();
+}
 
 static void Audio_CopyToRam(const uint16_t *in_stereo, uint16_t *out_stereo,
 		uint16_t len_halfwords) {
@@ -145,27 +152,22 @@ int main(void) {
 	HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET);
 	HAL_TIM_Base_Start_IT(&htim7);
 
-	uint8_t playListItem = 4;
-	if(playListItem >= PLAYLIST_COUNT) {
-		Error_Handler();
+	uint8_t playListIndex = PLAYLIST_INDEX;
+	if(playListIndex >= PLAYLIST_COUNT) {
+		userErrorHandler('1');
 	}
 
-	uint16_t *pDigitalAudioData = (uint16_t *) playList[playListItem].data;
-	uint16_t audioSize = playList[playListItem].lengh;
+	uint16_t *pDigitalAudioData = (uint16_t *) playList[playListIndex].data;
+	uint16_t audioSize = playList[playListIndex].lengh;
+
 	uint16_t codec_addr = CS43L22_DetectAndInit();
 	if (codec_addr != 0) {
-		/* LED3 (laranja) aceso = CS43L22 respondeu no I2C1 */
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-
-		/* Tamanho em número de amostras/half-words (uint16_t), não em bytes */
-
+		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
 		HAL_I2S_Transmit_DMA(&hi2s3, pDigitalAudioData, audioSize);
 		filter_enabled = 0U;
-		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
 		Audio_ApplyOutputBuffer(filter_enabled, pDigitalAudioData, audioSize);
 	} else {
-		/* LED4 (verde) aceso = falha de comunicação I2C com o CS43L22 */
-		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
+		userErrorHandler('2');
 	}
 	/* USER CODE END 2 */
 
@@ -179,21 +181,15 @@ int main(void) {
 		static GPIO_PinState last_btn_state = GPIO_PIN_RESET;
 		static uint32_t last_debounce_ms = 0U;
 
-		GPIO_PinState current_btn_state = HAL_GPIO_ReadPin(B1_GPIO_Port,
-		B1_Pin);
+		GPIO_PinState current_btn_state = HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
 
-		if ((current_btn_state == GPIO_PIN_SET)
-				&& (last_btn_state == GPIO_PIN_RESET)) {
-			if ((HAL_GetTick() - last_debounce_ms) > 150U) {
+		if (current_btn_state && !last_btn_state && HAL_GetTick() - last_debounce_ms > 150U) {
 				last_debounce_ms = HAL_GetTick();
-				filter_enabled = (filter_enabled == 0U) ? 1U : 0U;
-
-				HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin,
-						(filter_enabled != 0U) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-
+				filter_enabled = !filter_enabled;
+				HAL_GPIO_TogglePin(LD5_GPIO_Port, LD5_Pin);
 				Audio_ApplyOutputBuffer(filter_enabled, pDigitalAudioData, audioSize);
-			}
 		}
+
 		last_btn_state = current_btn_state;
 
 	}
