@@ -73,6 +73,7 @@ static void MX_TIM7_Init(void);
 
 void userErrorHandler(char code) {
 	ERROR_CODE = code;
+	HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
 	Error_Handler();
 }
 
