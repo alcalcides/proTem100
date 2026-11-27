@@ -53,7 +53,7 @@ TIM_HandleTypeDef htim7;
 #define PLAYLIST_INDEX 5
 
 static uint16_t audio_ram_buf[AUDIO_RAM_MAX_LEN];
-static uint8_t filter_enabled = 0U;
+static uint8_t isFilterEnabled = 0U;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -76,8 +76,7 @@ static void Audio_CopyToRam(const uint16_t *in_stereo, uint16_t *out_stereo,
 	}
 }
 
-static void Audio_LowPassFilter_400Hz(const uint16_t *in_stereo,
-		uint16_t *out_stereo, uint16_t len_halfwords) {
+static void Audio_LowPassFilter_400Hz(const uint16_t *in_stereo, uint16_t *out_stereo, uint16_t len_halfwords) {
 	/* fs = 96000 Hz, fc = 400 Hz -> alpha = (2*pi*fc) / (fs + 2*pi*fc) */
 	const float alpha = 0.0255106f;
 	float y_prev_l = 0.0f;
@@ -97,8 +96,7 @@ static void Audio_LowPassFilter_400Hz(const uint16_t *in_stereo,
 
 static void Audio_ApplyOutputBuffer(uint8_t use_filter, uint16_t *active_flash_signal, uint16_t active_flash_len) {
 	if (use_filter != 0U) {
-		Audio_LowPassFilter_400Hz(active_flash_signal, audio_ram_buf,
-				active_flash_len);
+		Audio_LowPassFilter_400Hz(active_flash_signal, audio_ram_buf, active_flash_len);
 	} else {
 		Audio_CopyToRam(active_flash_signal, audio_ram_buf, active_flash_len);
 	}
@@ -150,15 +148,15 @@ int main(void) {
 		userErrorHandler(1);
 	}
 
-	uint16_t *pDigitalAudioData = (uint16_t *) playList[playListIndex].data;
-	uint16_t audioSize = playList[playListIndex].lengh;
+	const uint16_t *pDigitalAudioData = playList[playListIndex].data;
+	uint16_t audioSize = playList[playListIndex].length;
 
 	uint16_t codec_addr = CS43L22_DetectAndInit();
 	if (codec_addr != 0) {
 		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
 		HAL_I2S_Transmit_DMA(&hi2s3, pDigitalAudioData, audioSize);
-		filter_enabled = 0U;
-		Audio_ApplyOutputBuffer(filter_enabled, pDigitalAudioData, audioSize);
+		isFilterEnabled = 0U;
+		Audio_ApplyOutputBuffer(isFilterEnabled, pDigitalAudioData, audioSize);
 	} else {
 		userErrorHandler(2);
 	}
@@ -166,21 +164,21 @@ int main(void) {
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
+	GPIO_PinState current_btn_state;
+	GPIO_PinState last_btn_state = GPIO_PIN_RESET;
+	uint32_t last_debounce_ms = 0U;
+	uint8_t isDebounceEnough;
 	while (1) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-
-		static GPIO_PinState last_btn_state = GPIO_PIN_RESET;
-		static uint32_t last_debounce_ms = 0U;
-
-		GPIO_PinState current_btn_state = HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
-
-		if (current_btn_state && !last_btn_state && HAL_GetTick() - last_debounce_ms > 150U) {
+		current_btn_state = HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
+		isDebounceEnough = HAL_GetTick() - last_debounce_ms > 150U;
+		if (current_btn_state && !last_btn_state && isDebounceEnough) {
 				last_debounce_ms = HAL_GetTick();
-				filter_enabled = !filter_enabled;
+				isFilterEnabled = !isFilterEnabled;
 				HAL_GPIO_TogglePin(LD5_GPIO_Port, LD5_Pin);
-				Audio_ApplyOutputBuffer(filter_enabled, pDigitalAudioData, audioSize);
+				Audio_ApplyOutputBuffer(isFilterEnabled, pDigitalAudioData, audioSize);
 		}
 
 		last_btn_state = current_btn_state;

@@ -31,7 +31,7 @@ extern const uint16_t audio_tone_6000hz_flash[AUDIO_6000HZ_LEN];
 typedef struct {
 	const char *id;
 	const uint16_t *data;
-	uint16_t lengh;
+	uint16_t length;
 } audioTrack_t;
 
 extern const audioTrack_t playList[];
