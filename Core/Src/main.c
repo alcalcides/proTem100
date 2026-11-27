@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "audio_signals.h"
 #include "CS43L22.h"
+#include "userErrorsHandler.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,7 +52,6 @@ TIM_HandleTypeDef htim7;
 #define AUDIO_RAM_MAX_LEN  AUDIO_100HZ_LEN
 #define PLAYLIST_INDEX 5
 
-int16_t ERROR_CODE;
 static uint16_t audio_ram_buf[AUDIO_RAM_MAX_LEN];
 static uint8_t filter_enabled = 0U;
 /* USER CODE END PV */
@@ -69,13 +69,6 @@ static void MX_TIM7_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-void userErrorHandler(int16_t code) {
-	ERROR_CODE = code;
-	HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-	Error_Handler();
-}
-
 static void Audio_CopyToRam(const uint16_t *in_stereo, uint16_t *out_stereo,
 		uint16_t len_halfwords) {
 	for (uint16_t i = 0; i < len_halfwords; i++) {
